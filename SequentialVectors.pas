@@ -14,13 +14,13 @@
     of specific type.
 
     Generics were not used because of backward compatibility with old
-    compilers, instead a template is provided. Also a complete derived vector
-    classes with items of type Integer are provided - you can refer to them for
-    more details.
+    compilers - instead a template is provided. Also a complete derived vector
+    classes with items of type Integer are provided (you can refer to them for
+    more details).
 
-  Version 1.0 (2024-07-14)
+  Version 1.0 (2024-07-15)
 
-  Last change (2024-07-14)
+  Last change (2024-07-15)
 
   ©2024 František Milt
 
@@ -69,7 +69,7 @@
   Integer vectors provided by this unit were completely created using this
   template, so you can look there for an example.
 
-  Also note that, if you do not need both LIFO and FIFO vectors, you can create
+  Also note that, if you do not need both FIFO and LIFO vectors, you can create
   complete implementation directly, without using two-level inheritance. All
   you need is a small tweak to the constructor - remove the OperationMode
   argument, and, in the constructor implementation, select one of the vector
@@ -130,7 +130,7 @@ end;
 //  Itemfinal is called whenever any item is implicitly (without explicit
 //  action of the user) removed from the vector - this includes actions such as
 //  clearing, freeing non-empty list or loading the list (where existing items
-//  are discarded). It is not called when Pop-ing, as it is functionally
+//  are discarded). It is not called when Pop-ing, as that is functionally
 //  equivalent to Extract in lists.
 //  Default action is a no-op. Implement only when the items really need to be
 //  finalized (objects, interfaces, dynamically allocated memory, dynamic
@@ -288,6 +288,10 @@ unit SequentialVectors;
 
 {$IFDEF FPC}
   {$MODE ObjFPC}
+  {$MODESWITCH DuplicateLocals+}
+  {$MODESWITCH ClassicProcVars+}
+  {$DEFINE FPC_DisableWarns}
+  {$MACRO ON}
 {$ENDIF}
 {$H+}
 
@@ -407,6 +411,9 @@ type
                             TIntegerSequentialVector
 --------------------------------------------------------------------------------
 ===============================================================================}
+{$IF SizeOf(Integer) <> 4}
+  {$MESSAGE WARN 'Incompatible integer size (expected 4B).'}
+{$IFEND}
 {===============================================================================
     TIntegerSequentialVector - class declaration
 ===============================================================================}
@@ -472,6 +479,12 @@ implementation
 uses
   StrRect, BinaryStreamingLite;
 
+{$IFDEF FPC_DisableWarns}
+  {$DEFINE FPCDWM}
+  {$DEFINE W4055:={$WARN 4055 OFF}} // Conversion between ordinals and pointers is not portable
+  {$DEFINE W5024:={$WARN 5024 OFF}} // Parameter "$1" not used
+{$ENDIF}
+
 {===============================================================================
 --------------------------------------------------------------------------------
                                 TSequentialVector
@@ -490,9 +503,11 @@ If CheckIndex(Index) then
   begin
     // convert item index to item position and then to its address
     If Index >= (fCapacity - fFirstItemPosition) then
+    {$IFDEF FPCDWM}{$PUSH}W4055{$ENDIF}
       Result := Pointer(PtrUInt(fMemory) + (PtrUInt(ItemsMemorySize(Index - (fCapacity - fFirstItemPosition)))))
     else
       Result := Pointer(PtrUInt(fMemory) + (PtrUInt(ItemsMemorySize(fFirstItemPosition + Index))));
+    {$IFDEF FPCDWM}{$POP}{$ENDIF}
   end
 else raise ESVIndexOutOfBounds.CreateFmt('TSequentialVector.GetItemPtr: Index (%d) out of bounds.',[Index]);
 end;
@@ -547,11 +562,13 @@ If Value <> fCapacity then
         fMemorySize := ItemsMemorySize(Value);
         ReallocMem(fMemory,fMemorySize);
         fCapacity := Value;
+      {$IFDEF FPCDWM}{$PUSH}W4055{$ENDIF}
         fHighMemory := Pointer(PtrUInt(fMemory) + fMemorySize);
         If ItemsToMove > 0 then
           Move(Pointer(PtrUInt(fMemory) + ItemsMemorySize(fFirstItemPosition))^,
-               Pointer(PtrUInt(fHighMemory) - PtrUInt(ItemsMemorySize(ItemsToMove)))^,
+               Pointer(PtrUInt(PtrUInt(fHighMemory) - PtrUInt(ItemsMemorySize(ItemsToMove))))^,
                ItemsMemorySize(ItemsToMove));
+      {$IFDEF FPCDWM}{$POP}{$ENDIF}
         fFirstItemPosition := fCapacity - ItemsToMove;
       end
     else
@@ -561,7 +578,9 @@ If Value <> fCapacity then
         fMemorySize := ItemsMemorySize(Value);
         fMemory := AllocMem(fMemorySize);
         fCapacity := Value;
+      {$IFDEF FPCDWM}{$PUSH}W4055{$ENDIF}
         fHighMemory := Pointer(PtrUInt(fMemory) + fMemorySize);
+      {$IFDEF FPCDWM}{$POP}{$ENDIF}
         fFirstItemPosition := 0;
       end;
   end;
@@ -576,17 +595,21 @@ end;
 
 //------------------------------------------------------------------------------
 
+{$IFDEF FPCDWM}{$PUSH}W5024{$ENDIF}
 procedure TSequentialVector.SetCount(Value: Integer);
 begin
 raise ESVInvalidOperation.Create('TSequentialVector.SetCount: Explicitly setting count is not allowed.');
 end;
+{$IFDEF FPCDWM}{$POP}{$ENDIF}
 
 //------------------------------------------------------------------------------
 
+{$IFDEF FPCDWM}{$PUSH}W5024{$ENDIF}
 procedure TSequentialVector.ItemFinal(Item: Pointer);
 begin
 // do nothing
 end;
+{$IFDEF FPCDWM}{$POP}{$ENDIF}
 
 //------------------------------------------------------------------------------
 
@@ -665,9 +688,11 @@ end;
 
 Function TSequentialVector.NextItemPtr(ItemPtr: Pointer): Pointer;
 begin
+{$IFDEF FPCDWM}{$PUSH}W4055{$ENDIF}
 Result := Pointer(PtrUInt(ItemPtr) + PtrUInt(fItemSize));
 If PtrUInt(Result) >= PtrUInt(fHighMemory) then
   Result := fMemory;
+{$IFDEF FPCDWM}{$POP}{$ENDIF}
 end;
 
 //------------------------------------------------------------------------------
